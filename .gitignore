@@ -1,0 +1,26 @@
+# NGINX build
+/build/
+
+# C/C++ intermediate
+*.o
+*.d
+*.so
+*.a
+
+# Unit tests
+/tests/unit/build/
+/tests/unit/*.bin
+
+# Editors / IDEs
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+.cache/
+compile_commands.json
+
+# OS
+.DS_Store
+Thumbs.db
