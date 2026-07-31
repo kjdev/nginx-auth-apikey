@@ -1,0 +1,26 @@
+if [ -z "$ngx_module_link" ]; then
+cat << END
+
+$0: error: auth apikey module requires recent version of NGINX (1.9.11+).
+
+END
+    exit 1
+fi
+
+# Redis is spoken over native ngx_http_upstream with an in-module RESP
+# encoder/decoder: no hiredis dependency, and no submodules.
+
+ngx_addon_name=ngx_http_auth_apikey_module
+ngx_module_type=HTTP
+ngx_module_name=$ngx_addon_name
+ngx_module_deps=" \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_module.h \
+  $ngx_addon_dir/src/ngx_auth_apikey_hash.h \
+"
+ngx_module_srcs=" \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_module.c \
+  $ngx_addon_dir/src/ngx_auth_apikey_hash.c \
+"
+ngx_module_libs=-lcrypto
+
+. auto/module
