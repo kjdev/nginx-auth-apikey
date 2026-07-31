@@ -1,10 +1,9 @@
-/* Module entry point: registers the module with NGINX. Directives are parsed
- * and merged here; the authentication phase handler and the $apikey_*
- * variables are added once ngx_http_auth_apikey_handler.c exists. Until then,
- * "auth_apikey" only validates configuration and has no effect on request
- * processing. */
+/* Module entry point: registers the module with NGINX. Directives are
+ * parsed and merged here; preconfiguration exposes the $apikey_* variables,
+ * postconfiguration registers the authentication phase handler. */
 
 #include "ngx_http_auth_apikey_module.h"
+#include "ngx_http_auth_apikey_handler.h"
 
 static char *ngx_http_auth_apikey_conf_set_key_variable(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
@@ -16,6 +15,29 @@ static char *ngx_http_auth_apikey_conf_set_require_variable(ngx_conf_t *cf,
 static void *ngx_http_auth_apikey_create_loc_conf(ngx_conf_t *cf);
 static char *ngx_http_auth_apikey_merge_loc_conf(ngx_conf_t *cf, void *parent,
     void *child);
+static ngx_int_t ngx_http_auth_apikey_add_variables(ngx_conf_t *cf);
+static ngx_int_t ngx_http_auth_apikey_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data);
+static ngx_int_t ngx_http_auth_apikey_init(ngx_conf_t *cf);
+
+/* Fixed set (ADR-0007): no prefix variables, no dynamic aliases. Indices
+ * match the HMGET field order in ngx_http_auth_apikey_handler.h. */
+static ngx_http_variable_t ngx_http_auth_apikey_vars[] = {
+
+    { ngx_string("apikey_user_id"), NULL, ngx_http_auth_apikey_variable,
+      NGX_HTTP_AUTH_APIKEY_FIELD_USER_ID, NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("apikey_scope"), NULL, ngx_http_auth_apikey_variable,
+      NGX_HTTP_AUTH_APIKEY_FIELD_SCOPE, NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("apikey_quota"), NULL, ngx_http_auth_apikey_variable,
+      NGX_HTTP_AUTH_APIKEY_FIELD_QUOTA, NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("apikey_enabled"), NULL, ngx_http_auth_apikey_variable,
+      NGX_HTTP_AUTH_APIKEY_FIELD_ENABLED, NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    ngx_http_null_variable
+};
 
 static ngx_command_t ngx_http_auth_apikey_commands[] = {
 
@@ -47,8 +69,8 @@ static ngx_command_t ngx_http_auth_apikey_commands[] = {
 };
 
 static ngx_http_module_t ngx_http_auth_apikey_module_ctx = {
-    NULL, /* preconfiguration */
-    NULL, /* postconfiguration */
+    ngx_http_auth_apikey_add_variables, /* preconfiguration */
+    ngx_http_auth_apikey_init,   /* postconfiguration */
 
     NULL, /* create main configuration */
     NULL, /* init main configuration */
@@ -353,4 +375,71 @@ ngx_http_auth_apikey_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
                               (size_t) ngx_pagesize);
 
     return NGX_CONF_OK;
+}
+
+static ngx_int_t
+ngx_http_auth_apikey_add_variables(ngx_conf_t *cf)
+{
+    ngx_http_variable_t *var, *v;
+
+    for (v = ngx_http_auth_apikey_vars; v->name.len; v++) {
+        var = ngx_http_add_variable(cf, &v->name, v->flags);
+        if (var == NULL) {
+            return NGX_ERROR;
+        }
+
+        var->get_handler = v->get_handler;
+        var->data = v->data;
+    }
+
+    return NGX_OK;
+}
+
+/* Reference: ngx_http_auth_jwt claim exposure guard. ctx->verified only
+ * becomes true after the enabled check passes (ADR-0006/ADR-0012), so a
+ * request that never reached that point, or is mid-flight on an internal
+ * redirect, never observes a half-decided reply. */
+static ngx_int_t
+ngx_http_auth_apikey_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data)
+{
+    ngx_uint_t field;
+    ngx_http_auth_apikey_ctx_t *ctx;
+
+    field = (ngx_uint_t) data;
+
+    ctx = ngx_http_auth_apikey_get_module_ctx(r);
+
+    if (ctx == NULL || !ctx->verified || ctx->fields_nil[field]) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = ctx->fields[field].data;
+    v->len = ctx->fields[field].len;
+    v->valid = 1;
+    v->no_cacheable = 1;
+    v->not_found = 0;
+
+    return NGX_OK;
+}
+
+/* Registers the phase handler alongside auth_basic/auth_request/auth_jwt,
+ * so "satisfy" composes with them (ADR-0002/ADR-0012). */
+static ngx_int_t
+ngx_http_auth_apikey_init(ngx_conf_t *cf)
+{
+    ngx_http_handler_pt *h;
+    ngx_http_core_main_conf_t *cmcf;
+
+    cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
+
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
+    if (h == NULL) {
+        return NGX_ERROR;
+    }
+
+    *h = ngx_http_auth_apikey_handler;
+
+    return NGX_OK;
 }

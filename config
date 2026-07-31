@@ -15,10 +15,18 @@ ngx_module_type=HTTP
 ngx_module_name=$ngx_addon_name
 ngx_module_deps=" \
   $ngx_addon_dir/src/ngx_http_auth_apikey_module.h \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_handler.h \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_upstream.h \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_reply.h \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_util.h \
   $ngx_addon_dir/src/ngx_auth_apikey_hash.h \
 "
 ngx_module_srcs=" \
   $ngx_addon_dir/src/ngx_http_auth_apikey_module.c \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_handler.c \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_upstream.c \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_reply.c \
+  $ngx_addon_dir/src/ngx_http_auth_apikey_util.c \
   $ngx_addon_dir/src/ngx_auth_apikey_hash.c \
 "
 ngx_module_libs=-lcrypto
