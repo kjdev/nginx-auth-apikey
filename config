@@ -8,11 +8,28 @@ END
 fi
 
 # Redis is spoken over native ngx_http_upstream with an in-module RESP
-# encoder/decoder: no hiredis dependency, and no submodules.
+# encoder/decoder: no hiredis dependency. nxe-phase is the sole vendored
+# submodule, used only to order the ACCESS-phase handler relative to
+# sibling auth modules.
+
+# --- submodule: nxe-phase ---
+# Priority-ordered registration for the ACCESS-phase handler, so execution
+# order relative to sibling auth modules (jwt / oauth2-token / webauthn /
+# oidc) is fixed by priority instead of load_module / --add-module order.
+nxe_phase_dir="$ngx_addon_dir/nxe-phase"
+nxe_phase_tag="auth_apikey"
+
+if [ ! -f "$nxe_phase_dir/config.ngx" ]; then
+    echo "$0: error: $nxe_phase_dir/config.ngx not found." \
+         "Run: git submodule update --init --recursive" >&2
+    exit 1
+fi
+
+. "$nxe_phase_dir/config.ngx"
 
 ngx_addon_name=ngx_http_auth_apikey_module
 ngx_module_type=HTTP
-ngx_module_name=$ngx_addon_name
+ngx_module_name="$ngx_addon_name $nxe_phase_module_name"
 ngx_module_deps=" \
   $ngx_addon_dir/src/ngx_http_auth_apikey_module.h \
   $ngx_addon_dir/src/ngx_http_auth_apikey_handler.h \
@@ -20,7 +37,9 @@ ngx_module_deps=" \
   $ngx_addon_dir/src/ngx_http_auth_apikey_reply.h \
   $ngx_addon_dir/src/ngx_http_auth_apikey_util.h \
   $ngx_addon_dir/src/ngx_auth_apikey_hash.h \
+  $nxe_phase_module_deps \
 "
+ngx_module_incs="$nxe_phase_module_incs"
 ngx_module_srcs=" \
   $ngx_addon_dir/src/ngx_http_auth_apikey_module.c \
   $ngx_addon_dir/src/ngx_http_auth_apikey_handler.c \
@@ -28,7 +47,8 @@ ngx_module_srcs=" \
   $ngx_addon_dir/src/ngx_http_auth_apikey_reply.c \
   $ngx_addon_dir/src/ngx_http_auth_apikey_util.c \
   $ngx_addon_dir/src/ngx_auth_apikey_hash.c \
+  $nxe_phase_module_srcs \
 "
-ngx_module_libs=-lcrypto
+ngx_module_libs="-lcrypto $nxe_phase_module_libs"
 
 . auto/module
