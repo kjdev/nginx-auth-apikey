@@ -202,7 +202,6 @@ ngx_http_auth_apikey_start(ngx_http_request_t *r,
     ngx_flag_t use_default_header;
     ngx_http_auth_apikey_ctx_t *ctx;
     ngx_http_upstream_t *u;
-    ngx_http_upstream_srv_conf_t *uscf;
     ngx_pool_cleanup_t *cln;
 
     use_default_header = (alcf->key_variable == NGX_CONF_UNSET);
@@ -270,21 +269,16 @@ ngx_http_auth_apikey_start(ngx_http_request_t *r,
         }
 
         ngx_memzero(&url, sizeof(ngx_url_t));
-        url.url = target;
+        url.host = target;
+        url.port = 0;
         url.no_resolve = 1;
 
-        uscf = ngx_http_auth_apikey_upstream_add(r, &url);
-        if (uscf == NULL) {
+        alcf->upstream.upstream = ngx_http_auth_apikey_upstream_add(r, &url);
+        if (alcf->upstream.upstream == NULL) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "auth_apikey: no upstream found: \"%V\"", &target);
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
-    } else {
-        uscf = alcf->upstream.upstream;
-    }
-
-    if (uscf->peer.init(r, uscf) != NGX_OK) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     u->input_filter_init = ngx_http_auth_apikey_filter_init;
