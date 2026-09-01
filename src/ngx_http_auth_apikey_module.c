@@ -2,6 +2,8 @@
  * parsed and merged here; preconfiguration exposes the $apikey_* variables,
  * postconfiguration registers the authentication phase handler. */
 
+#include <nxe_phase.h>
+
 #include "ngx_http_auth_apikey_module.h"
 #include "ngx_http_auth_apikey_handler.h"
 
@@ -425,21 +427,21 @@ ngx_http_auth_apikey_variable(ngx_http_request_t *r,
 }
 
 /* Registers the phase handler alongside auth_basic/auth_request/auth_jwt,
- * so "satisfy" composes with them (ADR-0002/ADR-0012). */
+ * so "satisfy" composes with them (ADR-0002/ADR-0012). nxe_phase_add_handler()
+ * (NXE_PHASE_PRIO_APIKEY = 300) fixes evaluation order relative to the other
+ * ACCESS-phase auth modules (jwt 200 / oauth2-token 250 / webauthn 450 /
+ * oidc 500) by priority instead of load_module / --add-module order
+ * (ADR-0013). */
 static ngx_int_t
 ngx_http_auth_apikey_init(ngx_conf_t *cf)
 {
-    ngx_http_handler_pt *h;
-    ngx_http_core_main_conf_t *cmcf;
-
-    cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-
-    h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
-    if (h == NULL) {
+    if (nxe_phase_add_handler(cf, NGX_HTTP_ACCESS_PHASE,
+                              NXE_PHASE_PRIO_APIKEY,
+                              ngx_http_auth_apikey_handler,
+                              "auth_apikey") != NGX_OK)
+    {
         return NGX_ERROR;
     }
-
-    *h = ngx_http_auth_apikey_handler;
 
     return NGX_OK;
 }
